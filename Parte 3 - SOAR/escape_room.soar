@@ -1,0 +1,708 @@
+rl -s learning on # enable RL
+indifferent-selection -g # use epsilon-greedy decision making
+indifferent-selection -e 0.2 # 20% deviation from greedy
+
+
+# propose initialize agent env
+sp {propose*initialize 
+    (state <s> ^superstate nil -^name)
+-->
+    (<s> ^operator <o> +)
+    (<o> ^name initialize-agent-env)
+}
+
+# accept initialize
+# possible position for the objects: 5, 1, 2, 3, 4
+sp {apply*initialize
+    (state <s> ^operator <o>)
+    (<o> ^name initialize-agent-env)
+-->
+    (<s> ^name escape_room
+         ^has_agent <agent>    
+         ^has_env <env>
+         ^has_total_round 1)
+    
+    (<agent> ^name Lee
+             ^has_object nil
+             ^has_object nil
+
+             ^combining_strategy <s1> <s2> <s3> <s4> <s5> <s6>
+             ^throwing_strategy <t1> <t2> <t3> <t4> <t5> <t6>
+             ^position_strategy <p1> <p2>
+
+             ^throwing_strategy_selected nil
+             ^position_strategy_selected nil
+             ^combining_strategy_selected nil
+
+             ^is_in_position 1
+             ^action start)       # start, observe, plan, execute
+
+    # COMBINING TOOOL STRATEGY
+    (<s1> ^name tool1 ^print_command spring-stick   ^has_object spring  ^has_object stick       ^reward   1)
+    (<s2> ^name tool2 ^print_command rocks-stick    ^has_object rocks   ^has_object stick       ^reward  -1)               
+    (<s3> ^name tool3 ^print_command rocks-spring   ^has_object rocks   ^has_object spring      ^reward  -1)               
+    (<s4> ^name tool4 ^print_command stick          ^has_object stick   ^has_object nil         ^reward  -1.1)               
+    (<s5> ^name tool5 ^print_command rocks          ^has_object rocks   ^has_object nil         ^reward  -1.1)               
+    (<s6> ^name tool6 ^print_command spring         ^has_object spring  ^has_object nil         ^reward  -1.1)               
+
+    # THROWING TOOL STRATEGY
+    (<t1> ^name on_trunks   ^print_command trunks   ^reward 1)
+    (<t2> ^name 4           ^print_command center   ^reward -0.5)   # CENTER
+    (<t3> ^name 5           ^print_command nord     ^reward -0.5)   # NORD
+    (<t4> ^name 1           ^print_command sud      ^reward -2)     # SUD
+    (<t5> ^name 2           ^print_command est      ^reward -1)     # EST
+    (<t6> ^name 3           ^print_command ovest    ^reward -1)     # OVEST
+
+    # POSITION WINDOW STRATEGY
+    (<p1> ^name border  ^reward 1)      # BORDER
+    (<p2> ^name center  ^reward -1)     # CENTER
+
+    # damage score:     (5 * combine + 5 * throwing + 10 * position)
+
+    # 1 SUD, 2 EST, 3 OVEST, 4 CENTER, 5 NORD
+    (<env>      ^has_object <window> <obj1> <obj2> <obj3> <obj4>)
+    (<window>   ^has_life_points 60 ^is_in_position 5 ^name window)
+
+    (<obj1> ^name spring    ^is_in_position 2)
+    (<obj2> ^name rocks     ^is_in_position 2)
+    (<obj3> ^name stick     ^is_in_position 3)
+    (<obj4> ^name trunks    ^is_in_position 4)
+    
+
+    (write (crlf) |EVENT ------------------------------------------------------ ESCAME ROOM START|)
+    (write (crlf))
+    (write (crlf) |---------------- Position 1 is SUD -------------------|)
+    (write (crlf) |---------------- Position 2 is EST -------------------|)
+    (write (crlf) |---------------- Position 3 is OVEST -----------------|)
+    (write (crlf) |---------------- Position 4 is CENTER ----------------|)
+    (write (crlf) |---------------- Position 5 is NORD ------------------|)
+    (write (crlf))
+    (write (crlf) |EVENT ------------------------------------------------------ Finishing initialize process!|)
+    (write (crlf))
+}
+
+
+
+# Finishing/starting agent action
+sp { propose*agent*observe 
+    (state <s>  ^name escape_room
+                ^has_agent <agent>)
+
+    (<agent> ^action start)
+-->
+    (<s> ^operator <o>)
+    (<o> ^name observe_operator)
+}
+
+# change state to observe
+sp { apply*agent*observe
+    (state <s>  ^name escape_room
+                ^operator <o>
+                ^has_agent <agent>)
+
+    (<o> ^name observe_operator)
+    (<agent>    ^name <name>)
+-->
+    (<agent> ^action start - observe +)
+    (write (crlf) |EVENT ------------------------------------------------------ Agent | <name> | IS OBSERVING THE ROOM|)
+}
+
+
+
+### Init agent action in observing mode
+sp { lookup*agent*room
+    (state <s>  ^name escape_room
+                ^has_agent <agent>
+                ^has_env <env>
+                ^has_total_round <round>)
+
+    (<agent>    ^action observe
+                ^is_in_position <pos_agent>) 
+
+    (<env>      ^has_object <window> <obj1> <obj2> <obj3> <obj4>)
+    (<window>   ^name window ^has_life_points <points> ^is_in_position <pos_window>)
+    (<obj1>     ^name spring ^is_in_position <pos_spring>)
+    (<obj2>     ^name rocks ^is_in_position <pos_rocks>)
+    (<obj3>     ^name stick ^is_in_position <pos_stick>)
+    (<obj4>     ^name trunks ^is_in_position <pos_trunks>)
+-->
+    (write (crlf) |EVENT ------------------------------------------------------ ACTUAL ROUND: | <round>)
+    (write (crlf))
+    (write (crlf) |Window LIFE POINTS: | <points>)
+    (write (crlf) |The Agent is in position: | <pos_agent>)
+    (write (crlf) |The Agent knows there is a window in position: | <pos_window>)
+    (write (crlf) |The Agent knows there is a spring in position: | <pos_spring>)
+    (write (crlf) |The Agent knows there are some rocks in position: | <pos_rocks>)
+    (write (crlf) |The Agent knows there is a stick in position: | <pos_stick>)
+    (write (crlf) |The Agent knows there are some truncks in position: | <pos_trunks>)
+    (write (crlf))
+}
+
+
+
+
+#--------------------------------------------------------------------------------------------------
+### What can the agent does after looking the room?
+# agent is planning what action perform
+#--------------------------------------------------------------------------------------------------
+
+sp {propose*plan-tool
+    (state <s>  ^name escape_room
+                ^has_agent <agent>)
+    (<agent>    ^action observe)   
+-->
+    (<s> ^operator <o>)
+    (<o> ^name plan-tool_operator)
+}
+
+
+# apply plan-tooloperator
+sp {apply*plan-tool
+
+    (state <s>  ^name escape_room
+                ^has_agent <agent>
+                ^operator <o>)
+                
+    (<o> ^name plan-tool_operator)
+    (<agent>    ^action observe
+                ^name <name>)  
+-->
+    (<agent> ^action observe - plan-tool +)
+    (write (crlf) |EVENT ------------------------------------------------------ Agent | <name> | IS PLANNING!|)
+    (write (crlf))
+}
+
+
+
+
+#--------------------------------------------------------------------------------------------------
+# combining objects
+#--------------------------------------------------------------------------------------------------
+
+sp {propose*combining*strategy
+
+    (state <s>  ^name escape_room
+                ^has_agent <agent>)
+
+    (<agent>    ^action plan-tool
+                ^combining_strategy <strategy>)
+
+    (<strategy> ^name <name>
+                ^print_command <print>)
+-->
+    (<s>    ^operator <o>)
+    (<o>    ^name strategy_operator
+            ^strategy_name <name>
+            ^print_command <print>)
+}
+
+# set reward time 0
+sp {agent*rl*strategy-tool1*SPRING-STICK
+
+    (state <s>  ^name escape_room
+                ^operator <op> +)
+    (<op>       ^name strategy_operator
+                ^strategy_name tool1)
+-->
+    (<s> ^operator <op> = 1)
+}
+
+sp {agent*rl*strategy-tool2*ROCKS-STICK 
+
+    (state <s>  ^name escape_room
+                ^operator <op> +)
+    (<op>       ^name strategy_operator
+                ^strategy_name tool2)
+-->
+    (<s> ^operator <op> = 0)
+}
+
+sp {agent*rl*strategy-tool3*ROCKS-SPRING
+
+    (state <s>  ^name escape_room
+                ^operator <op> +)
+    (<op>       ^name strategy_operator
+                ^strategy_name tool3)
+-->
+    (<s> ^operator <op> = 0)
+}
+
+
+sp {agent*rl*strategy-tool4*STICK
+
+    (state <s>  ^name escape_room
+                ^operator <op> +)
+    (<op>       ^name strategy_operator
+                ^strategy_name tool4)
+-->
+    (<s> ^operator <op> = 0)
+}
+
+
+sp {agent*rl*strategy-tool5*ROCKS
+
+    (state <s>  ^name escape_room
+                ^operator <op> +)
+    (<op>       ^name strategy_operator
+                ^strategy_name tool5)
+-->
+    (<s> ^operator <op> = 0)
+}
+
+
+sp {agent*rl*strategy-tool6*SPRING
+
+    (state <s>  ^name escape_room
+                ^operator <op> +)
+    (<op>       ^name strategy_operator
+                ^strategy_name tool6)
+-->
+    (<s> ^operator <op> = 0)
+}
+
+
+
+sp {apply*combining*strategy
+    (state <s>  ^name escape_room
+                ^has_agent <agent>
+                ^operator <op>)
+    
+    (<op>       ^name strategy_operator
+                ^strategy_name <new_strategy>
+                ^print_command <print>)
+
+    (<agent>    ^combining_strategy_selected <old_strategy>
+                ^action <action>
+                ^name <name>)
+
+-->
+    (<agent> ^action <action> - plan-position +)
+    (<agent> ^combining_strategy_selected <old_strategy> - <new_strategy> +)
+    (write (crlf) |EVENT                                                        Agent | <name> | chooses to combine | <print> | (|<new_strategy>|)|)
+    (write (crlf))
+}
+
+
+# When a strategy is chosen, assert the associated reward 
+sp {elaborate*combining*reward
+    (state <s>  ^name escape_room
+                ^reward-link <r>
+                ^has_agent <agent>)
+
+    (<agent>    ^combining_strategy_selected <strategy_name>
+                ^combining_strategy <strategy>)        
+
+    (<strategy> ^name <strategy_name>
+                ^reward <s-reward>)
+-->
+   (<r> ^reward <rr>)
+   (<rr> ^value <s-reward>)
+}
+
+
+
+
+sp {propose*throwing*strategy
+    (state <s>  ^name escape_room
+                ^has_agent <agent>)
+
+    (<agent>    ^action plan-position
+                ^throwing_strategy <strategy>)
+    (<strategy> ^name <name> ^print_command <position>)
+-->
+    (<s>    ^operator <o>)
+    (<o>    ^name throwing_strategy_operator
+            ^strategy_name <name>
+            ^print_command <position>)
+}
+
+# set reward time 0
+sp {agent*rl*strategy-on_trunks
+
+    (state <s>  ^name escape_room
+                ^operator <op> +)
+    (<op>       ^name throwing_strategy_operator
+                ^strategy_name on_trunks)
+-->
+    (<s> ^operator <op> = 5)
+}
+
+
+sp {agent*rl*strategy-on-CENTER
+
+    (state <s>  ^name escape_room
+                ^operator <op> +)
+    (<op>       ^name throwing_strategy_operator
+                ^strategy_name 4)
+-->
+    (<s> ^operator <op> = 0)
+}
+
+sp {agent*rl*strategy-on-SUD
+
+    (state <s>  ^name escape_room
+                ^operator <op> +)
+    (<op>       ^name throwing_strategy_operator
+                ^strategy_name 1)
+-->
+    (<s> ^operator <op> = 0)
+}
+
+sp {agent*rl*strategy-on-OVEST
+
+    (state <s>  ^name escape_room
+                ^operator <op> +)
+    (<op>       ^name throwing_strategy_operator
+                ^strategy_name 3)
+-->
+    (<s> ^operator <op> = 0)
+}
+
+
+sp {agent*rl*strategy-on-EST
+
+    (state <s>  ^name escape_room
+                ^operator <op> +)
+    (<op>       ^name throwing_strategy_operator
+                ^strategy_name 2)
+-->
+    (<s> ^operator <op> = 0)
+}
+
+
+sp {agent*rl*strategy-on-NORD
+
+    (state <s>  ^name escape_room
+                ^operator <op> +)
+    (<op>       ^name throwing_strategy_operator
+                ^strategy_name 5)
+-->
+    (<s> ^operator <op> = 0)
+}
+
+
+sp {apply*throwing*strategy
+    (state <s>  ^name escape_room
+                ^has_agent <agent>
+                ^operator <op>)
+    
+    (<op>       ^name throwing_strategy_operator
+                ^strategy_name <new_strategy>
+                ^print_command <position>)
+
+    (<agent>    ^throwing_strategy_selected <old_strategy>
+                ^action plan-position
+                ^name <name>)
+
+-->
+    (<agent> ^throwing_strategy_selected <old_strategy> - <new_strategy> +)
+    (<agent> ^action plan-position - plan-throwing +)
+    (write (crlf) |EVENT ------------------------------------------------------ Agent | <name> | chooses to fire from position: on | <position>)
+    (write (crlf))
+}
+
+
+# When a strategy is chosen, assert the associated reward 
+sp {elaborate*throwing*reward
+    (state <s>  ^name escape_room
+                ^reward-link <r>
+                ^has_agent <agent>)
+
+    (<agent>    ^throwing_strategy_selected <strategy_name>
+                ^action plan-position
+                ^throwing_strategy <strategy>)        
+
+    (<strategy> ^name <strategy_name>
+                ^reward <s-reward>)
+-->
+   (<r> ^reward <rr>)
+   (<rr> ^value <s-reward>)
+}
+
+
+
+#--------------------------------------------------------------------------------------------------
+# select which position to hit, 4 or border
+#--------------------------------------------------------------------------------------------------
+
+sp {propose*position-throwing-strategy
+    (state <s>  ^name escape_room
+                ^has_agent <agent>)
+
+    (<agent>    ^action plan-throwing
+                ^position_strategy <strategy>)
+
+    (<strategy> ^name <name>)
+-->
+    (<s>    ^operator <o>)
+    (<o>    ^name position_strategy_operator
+            ^strategy_name <name>)
+}
+
+
+# set reward time 0
+sp {agent*rl*strategy*fire*on*BORDER
+    (state <s>  ^name escape_room
+                ^operator <op> +)
+    (<op>       ^name position_strategy_operator
+                ^strategy_name border)
+-->
+    (<s> ^operator <op> = 0)
+}
+
+
+sp {agent*rl*strategy*fire*on*CENTER
+    (state <s>  ^name escape_room
+                ^operator <op> +)
+    (<op>       ^name position_strategy_operator
+                ^strategy_name center)
+-->
+    (<s> ^operator <op> = 0)
+}
+
+
+sp {apply*position-throwing-strategy
+    (state <s>  ^name escape_room
+                ^has_agent <agent>
+                ^operator <op>)
+    (<op>       ^name position_strategy_operator
+                ^strategy_name <new_strategy>)
+    (<agent>    ^position_strategy_selected <old_strategy> ^name <name> ^action <action>)
+
+-->
+    (<agent> ^position_strategy_selected <old_strategy> - <new_strategy> +)
+    (<agent> ^action <action> - execute-take +)
+    (write (crlf) |EVENT ------------------------------------------------------ Agent | <name> | chooses to fire on the | <new_strategy> | of the window|)
+    (write (crlf))
+}
+
+
+# When a strategy is chosen, assert the associated reward 
+sp {elaborate*position*reward
+    (state <s>  ^name escape_room
+                ^reward-link <r>
+                ^has_agent <agent>)
+
+    (<agent>    ^position_strategy_selected <strategy_name>
+                ^position_strategy <strategy>)        
+
+    (<strategy> ^name <strategy_name>
+                ^reward <s-reward>)
+-->
+   (<r> ^reward <rr>)
+   (<rr> ^value <s-reward>)
+}
+
+
+sp {propose*execute-take-objects
+    (state <s>  ^name escape_room
+                ^has_agent <agent>)
+
+    (<agent>    ^action execute-take)
+-->
+    (<s> ^operator <o>)
+    (<o> ^name take_objects_operator)
+}
+
+
+sp {apply*execute-take-objects
+
+    (state <s>  ^name escape_room
+                ^operator <o>
+                ^has_agent <agent>
+                ^has_env <env>)
+
+    (<o> ^name take_objects_operator)
+    
+    (<agent> ^name <name>
+             ^action <action>
+             ^is_in_position <pos_agent>
+             ^combining_strategy_selected <strategy_name>
+             ^combining_strategy <s1>)
+
+    (<s1> ^name <strategy_name> ^has_object  <c1>)
+    
+    (<env> ^has_object <ob1>)
+    (<ob1>  ^name <c1> ^is_in_position <pos_obj>)
+    
+-->
+    (<agent> ^is_in_position <pos_agent> - <pos_obj> +)
+    (<agent> ^action <action> - execute-what-position +)
+    (<agent> ^has_object <c1>)
+
+    (write (crlf) )
+    (write (crlf) |INFO                                                         Agent | <name> | moves on position | <pos_obj>)
+    (write (crlf) |                                                             Agent | <name> | takes a | <c1>)
+    (write (crlf) (crlf))
+}
+
+
+
+sp {propose*go-on-position
+    (state <s>  ^name escape_room
+                ^has_agent <agent>)
+    (<agent>    ^action execute-what-position)
+-->
+    (<s> ^operator <o>)
+    (<o> ^name execute_what_position_operator)
+}
+
+
+sp {apply*go-on-position
+    (state <s>  ^name escape_room
+                ^has_agent <agent>
+                ^operator <o>)
+
+    (<agent>    ^name <name>
+                ^action execute-what-position
+                ^is_in_position <pos_agent>
+                ^throwing_strategy_selected <strategy>)
+
+    (<o> ^name execute_what_position_operator)
+-->
+    (<agent> ^action execute-what-position - execute-fire +)
+    (<agent> ^is_in_position <pos_agent> - <strategy> +)
+    
+    (write (crlf) )
+    (write (crlf) |INFO                                                         Agent | <name> | try fire from position: | <strategy>)
+    (write (crlf) (crlf))
+}
+
+
+
+sp {propose*fire*on*window
+    (state <s>  ^name escape_room
+                ^has_agent <agent>)
+    (<agent>    ^action execute-fire)
+-->
+    (<s> ^operator <o>)
+    (<o> ^name fire_operator)
+}
+
+
+sp {apply*fire*on*window
+    (state <s>  ^name escape_room
+                ^has_env <env>
+                ^has_agent <agent>
+                ^operator <o>)
+
+    (<o> ^name fire_operator)
+    (<env> ^has_object <window>)
+    (<window>   ^name window ^has_life_points <points>)
+
+    (<agent>    ^action <action>
+                ^position_strategy_selected {<p> <> nil}
+                ^throwing_strategy_selected {<t> <> nil}
+                ^combining_strategy_selected {<c> <> nil}
+                ^position_strategy <ps>
+                ^throwing_strategy <ts>
+                ^combining_strategy <cs>)
+    
+    (<ps> ^name <p> ^reward <rp> )
+    (<ts> ^name <t> ^reward <rt> ^print_command <print_ts>)
+    (<cs> ^name <c> ^reward <rc> ^print_command <print_cs>)
+-->
+    (<agent>  ^action <action> - define-update +)
+    (<window> ^has_life_points <points> - (- <points> (max 1 (+ (+ (* 5 <rc>) (* 5 <rt>)) (* 10 <rp>))) ) )
+    (write (crlf) |EVENT ------------------------------------------------------ FIRE ON WINDOW|)
+    (write (crlf) |EVENT                                                        DAMAGE: |  (max 1 (+ (+ (* 5 <rc>) (* 5 <rt>)) (* 10 <rp>))) )
+    (write (crlf) |EVENT                                                        REWARD OF " 10 * | <rp> |" FOR SELECT POSITION WINDOW:    | <p>)
+    (write (crlf) |EVENT                                                        REWARD OF " 5 * | <rt> |" FOR SELECT THROWING POSITION:  | <print_ts>)
+    (write (crlf) |EVENT                                                        REWARD OF " 5 * | <rc> |" FOR SELECT COMBINING TOOL:     | <c> | (| <print_cs> |)|)
+    (write (crlf))
+}
+
+
+sp {propose*update*objects 
+    (state <s>      ^name escape_room
+                    ^has_agent <agent>)
+    (<agent>        ^action define-update)
+-->
+    (<s> ^operator <o>)
+    (<o> ^name define-update_pos_object_operator)
+}
+
+
+sp {apply*update*objects
+    (state <s>      ^name escape_room
+                    ^has_agent <agent>
+                    ^has_env <env>
+                    ^operator <o>)
+
+    (<o> ^name define-update_pos_object_operator)
+
+    (<agent>    ^action <action> ^has_object {<ob> <> nil})
+    (<env> ^has_object <env_object>)
+    (<env_object> ^name <ob> ^is_in_position <pos_obj>)
+-->
+    (<agent>  ^action <action> - restart +)
+    (<agent> ^has_object <ob> - nil +)
+    (<env_object> ^is_in_position <pos_obj> - (+ (rand-int 4) 1) +)
+    
+    (write (crlf) |INFO                                                         Agent loose an object: | <ob>)
+    (write (crlf)) 
+}
+
+
+
+sp {propose*escape
+   (state <s>    ^name escape_room
+                 ^has_agent <agent>
+                 ^has_env <env>)
+
+    (<agent>    ^action restart)
+    (<env>      ^has_object <window>)
+    (<window>   ^name window ^has_life_points {<points> <= 0})
+-->
+    (<s> ^operator <o>)
+    (<o> ^name execute-escape)
+}
+
+sp {apply*escape
+     (state <s>  ^name escape_room
+                 ^has_agent <agent>
+                 ^has_total_round <round>
+                 ^operator <o>)
+
+    (<o> ^name execute-escape)
+    (<agent>  ^action <action> ^name <name>)
+-->
+    (<agent> ^action <action> - finish +)
+    (write (crlf) |EVENT ------------------------------------------------------ Agent | <name> | IS ESCAPED !!! |)
+    (write (crlf) |EVENT ------------------------------------------------------ Agent | <name> | TOOK | <round> | ROUND TO ESCAPE!|)
+    (write (crlf))
+    (halt)
+}
+
+
+sp {propose*restart
+    (state <s>  ^name escape_room
+                 ^has_agent <agent>
+                 ^has_env <env>)
+
+    (<agent>    ^action restart)
+    (<env>      ^has_object <window>)
+    (<window>   ^name window ^has_life_points {<points> > 0})
+-->
+    (<s> ^operator <o>)
+    (<o> ^name restart_operator)
+}
+
+
+sp {apply*restart
+     (state <s>  ^name escape_room
+                 ^has_agent <agent>
+                 ^has_total_round <round>
+                 ^operator <o>)
+
+    (<o> ^name restart_operator)
+    (<agent>    ^action <action>)
+-->
+    (<s> ^has_total_round <round> - (+ <round> 1) +)
+    (<agent> ^action <action> - start +)
+    (write (crlf))
+    (write (crlf) |EVENT ------------------------------------------------------ The window is BLOCKED YET ..... RETRY|)
+    (write (crlf) (crlf) (crlf) (crlf) (crlf) (crlf) (crlf) (crlf))
+    (write (crlf) | ------------------------------------------------------ NEW RUN ------------------------------------------------------|)
+    (wait 1000)
+}
